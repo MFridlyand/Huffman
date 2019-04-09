@@ -8,7 +8,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.PriorityQueue;
 
 public class Huffman {
 
@@ -136,45 +138,29 @@ public class Huffman {
 		}
 		return new Header(dict, dataSize);
 	}
-
+	
 	private static Node buildHuffmanTree(int[] dictionary) {
-		ArrayList<Node> nodes = new ArrayList<>();
+		PriorityQueue<Node> nodes = new PriorityQueue<>(dictionary.length, new Comparator<Node>() {
+			@Override
+			public int compare(Node arg0, Node arg1) {
+				return arg0.freq - arg1.freq;
+			}
+		});
 		for (int i = 0; i < dictionary.length; i++) {
 			if (dictionary[i] != 0)
-				nodes.add(new Node(index2byte(i), dictionary[i]));
+				nodes.offer(new Node(index2byte(i), dictionary[i]));
 		}
 		while (nodes.size() > 1) {
-			Node n0 = nodes.get(0);
-			Node n1 = nodes.get(1);
-			if (n0.freq > n1.freq) {
-				Node t = n0;
-				n0 = n1;
-				n1 = t;
-			}
-			for (int i = 2; i < nodes.size(); i++) {
-				Node node = nodes.get(i);
-				if (node.freq < n0.freq) {
-					n1 = n0;
-					n0 = node;
-				} else if (node.freq < n1.freq)
-					n1 = node;
-			}
+			Node n0 = nodes.poll();
+			Node n1 = nodes.poll();
 
 			Node newNode = new Node((byte) 0, n0.freq + n1.freq);
 			newNode.left = n0;
 			newNode.right = n1;
-
-			ArrayList<Node> modifiedNodes = new ArrayList<>();
-			for (int i = 0; i < nodes.size(); i++) {
-				Node node = nodes.get(i);
-				if (node != n0 && node != n1)
-					modifiedNodes.add(node);
-			}
-			modifiedNodes.add(newNode);
-			nodes = modifiedNodes;
+			nodes.offer(newNode);
 		}
 		// printTree(nodes.get(0), "");
-		return nodes.get(0);
+		return nodes.peek();
 	}
 
 	private static String[] buildCodeTable(Node node) {
