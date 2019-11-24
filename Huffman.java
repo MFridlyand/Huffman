@@ -7,9 +7,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.List;
 import java.util.PriorityQueue;
 
 public class Huffman {
@@ -20,7 +18,7 @@ public class Huffman {
 		String[] codeTable = buildCodeTable(root);
 		ByteArrayOutputStream stream = new ByteArrayOutputStream();
 		writeHeader(dictionary, input.length, stream);
-		encode(input, stream, codeTable);
+		encode(input, codeTable, stream);
 		return stream.toByteArray();
 	}
 
@@ -34,34 +32,37 @@ public class Huffman {
 		return out.toByteArray();
 	}
 
-	private static void encode(byte[] input, ByteArrayOutputStream stream, String[] codeTable) throws IOException {
+	private static void encode(byte[] input, String[] codeTable, ByteArrayOutputStream stream) throws IOException {
 		BitWriter w = new BitWriter(stream);
-		for (int i = 0; i < input.length; i++) {
-			int index = byte2index(input[i]);
-			String code = codeTable[index];
-			for (int j = 0; j < code.length(); j++) {
-				boolean bit = code.charAt(j) == '1' ? true : false;
-				w.writeBit(bit);
-			}
-		}
+		for (byte b : input)
+			encodeByte(b, codeTable, w);
 		w.close();
+	}
+
+	private static void encodeByte(byte b, String[] codeTable, BitWriter w) throws IOException {
+		int index = byte2index(b);
+		String code = codeTable[index];
+		for (char c : code.toCharArray()) {
+			boolean bit = c == '1';
+			w.writeBit(bit);
+		}
 	}
 
 	private static int byte2index(byte b) {
 		int index = b + 128; // < 0 ? b + 256 : b;
-		assert index < 256 && index >= 0;
 		return index;
 	}
 
 	private static byte index2byte(int index) {
+		assert index < 256 && index >= 0;
 		byte b = (byte) (index - 128); // < 0 ? b + 256 : b;
 		return b;
 	}
 
 	private static int[] buildDictionary(byte[] input) {
 		int[] dictionary = new int[256];
-		for (int i = 0; i < input.length; i++) {
-			int index = byte2index(input[i]);
+		for (byte b : input) {
+			int index = byte2index(b);
 			dictionary[index]++;
 		}
 		return dictionary;
@@ -71,19 +72,23 @@ public class Huffman {
 			throws IOException {
 		BitReader reader = new BitReader(stream);
 		for (int i = 0; i < dataSize; i++) {
-			Node node = root;
-			while (!node.isLeaf()) {
-				int bit = reader.readBit();
-				if (bit == 0)
-					node = node.left;
-				else
-					node = node.right;
-			}
-			out.write(node.val);
+			decodeByte(root, reader, out);
 		}
 	}
 
-	static class Node {
+	private static void decodeByte(Node root, BitReader reader, ByteArrayOutputStream out) throws IOException {
+		Node node = root;
+		while (!node.isLeaf()) {
+			int bit = reader.readBit();
+			if (bit == 0)
+				node = node.left;
+			else
+				node = node.right;
+		}
+		out.write(node.val);
+	}
+
+	private static class Node {
 		public int freq;
 		public byte val;
 		public Node left, right;
@@ -98,7 +103,7 @@ public class Huffman {
 		}
 	}
 
-	static class Header {
+	private static class Header {
 		public Header(int[] dictionary, int dataSize) {
 			this.dictionary = dictionary;
 			this.dataSize = dataSize;
@@ -112,8 +117,8 @@ public class Huffman {
 		DataOutputStream dataOutput = new DataOutputStream(stream);
 		dataOutput.writeInt(inputLength);
 		int tableItemsCount = 0;
-		for (int i = 0; i < dictionary.length; i++) {
-			if (dictionary[i] != 0)
+		for (int item : dictionary) {
+			if (item != 0)
 				tableItemsCount++;
 		}
 		dataOutput.writeInt(tableItemsCount);
@@ -138,8 +143,23 @@ public class Huffman {
 		}
 		return new Header(dict, dataSize);
 	}
-	
+
 	private static Node buildHuffmanTree(int[] dictionary) {
+		final PriorityQueue<Node> nodes = buildHeap(dictionary);
+		while (nodes.size() > 1) {
+			final Node n0 = nodes.poll();
+			final Node n1 = nodes.poll();
+
+			final Node newNode = new Node((byte) 0, n0.freq + n1.freq);
+			newNode.left = n0;
+			newNode.right = n1;
+			nodes.offer(newNode);
+		}
+		// printTree(nodes.get(0), "");
+		return nodes.peek();
+	}
+
+	private static PriorityQueue<Node> buildHeap(int[] dictionary) {
 		PriorityQueue<Node> nodes = new PriorityQueue<>(dictionary.length, new Comparator<Node>() {
 			@Override
 			public int compare(Node arg0, Node arg1) {
@@ -150,17 +170,7 @@ public class Huffman {
 			if (dictionary[i] != 0)
 				nodes.offer(new Node(index2byte(i), dictionary[i]));
 		}
-		while (nodes.size() > 1) {
-			Node n0 = nodes.poll();
-			Node n1 = nodes.poll();
-
-			Node newNode = new Node((byte) 0, n0.freq + n1.freq);
-			newNode.left = n0;
-			newNode.right = n1;
-			nodes.offer(newNode);
-		}
-		// printTree(nodes.get(0), "");
-		return nodes.peek();
+		return nodes;
 	}
 
 	private static String[] buildCodeTable(Node node) {
@@ -178,6 +188,7 @@ public class Huffman {
 		}
 	}
 
+	@SuppressWarnings("unused")
 	private static void printTree(Node node, String margin) {
 		if (node != null) {
 			System.out.println(margin + "freq: " + node.freq + " val :" + (char) node.val);
